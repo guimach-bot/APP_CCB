@@ -65,17 +65,35 @@ let mesGlobal;
 let localGlobal;
 
 async function iniciar() {
-  mesGlobal = document.getElementById("mes").value;
-  localGlobal = document.getElementById("local").value;
+  try {
+    mesGlobal = document.getElementById("mes").value;
+    localGlobal = document.getElementById("local").value;
 
-  let { data } = await supabase.from("registros")
-    .insert([{ mes: mesGlobal, local: localGlobal }])
-    .select();
+    if (!localGlobal) {
+      alert("Informe o local!");
+      return;
+    }
 
-  registroId = data[0].id;
+    const { data, error } = await supabase
+      .from("registros")
+      .insert([{ mes: mesGlobal, local: localGlobal }])
+      .select();
 
-  document.getElementById("inicio").style.display = "none";
-  document.getElementById("setores").style.display = "block";
+    if (error) {
+      console.error(error);
+      alert("Erro ao salvar no banco!");
+      return;
+    }
+
+    registroId = data[0].id;
+
+    document.getElementById("inicio").style.display = "none";
+    document.getElementById("setores").style.display = "block";
+
+  } catch (err) {
+    console.error(err);
+    alert("Erro inesperado!");
+  }
 }
 
 function abrirSetor(setor) {
