@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>App Documentos</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+</head>
+
+<body>
+
+<h2>Seleção Inicial</h2>
+
+<select id="mes">
+  <option>Janeiro</option>
+  <option>Fevereiro</option>
+</select>
+
+<input type="text" id="local" placeholder="Local">
+
+<button onclick="iniciar()">Iniciar</button>
+
+<div id="setores" style="display:none;">
+  <h2>Setores</h2>
+  <button onclick="abrirSetor('Voluntaria')">Atividade Voluntária</button>
+  <button onclick="abrirSetor('Tesouraria')">Tesouraria</button>
+  <button onclick="abrirSetor('Manutencao')">Manutenção</button>
+</div>
+
+<div id="camera" style="display:none;">
+  <h3 id="instrucao"></h3>
+  <video id="video" width="300" autoplay></video>
+  <br>
+  <button onclick="tirarFoto()">📸 Tirar foto</button>
+  <button onclick="concluir()">✅ Concluir</button>
+</div>
+
+<script>
+const supabase = supabase.createClient(
+  "SUA_URL",
+  "SUA_CHAVE"
+);
+
+let registroId;
+let setorAtual;
+let fotos = [];
+
+async function iniciar() {
+  let mes = document.getElementById("mes").value;
+  let local = document.getElementById("local").value;
+
+  let { data } = await supabase
+    .from("registros")
+    .insert([{ mes, local }])
+    .select();
+
+  registroId = data[0].id;
+
+  document.getElementById("setores").style.display = "block";
+}
+
+function abrirSetor(setor) {
+  setorAtual = setor;
+  document.getElementById("camera").style.display = "block";
+
+  iniciarCamera();
+
+  document.getElementById("instrucao").innerText =
+    setor === "Tesouraria"
+      ? "Foto da folha de coleta"
+      : "Tire as fotos";
+}
+
+async function iniciarCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  document.getElementById("video").srcObject = stream;
+}
+
+function tirarFoto() {
+  const video = document.getElementById("video");
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  canvas.getContext("2d").drawImage(video, 0, 0);
+
+  canvas.toBlob(async (blob) => {
+    let fileName = Date.now() + ".png";
+
+    let { data } = await supabase.storage
+      .from("documentos")
+      .upload(fileName, blob);
+
+    let url = supabase.storage
+      .from("documentos")
+      .getPublicUrl(fileName).data.publicUrl;
+
+    await supabase.from("uploads").insert([
+      {
+        registro_id: registroId,
+        setor: setorAtual,
+        arquivo_url: url
+      }
+    ]);
+
+    fotos.push(url);
+  });
+}
+
+async function concluir() {
+  if (fotos.length === 0) {
+    alert("Envie ao menos uma foto");
+    return;
+  }
+
+  alert("Envio concluído!");
+
+  fotos = [];
+  document.getElementById("camera").style.display = "none";
+}
+</script>
+
+</body>
+</html>
