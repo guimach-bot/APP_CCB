@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Scanner de Documentos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #18181f;
+    --surface2: #22222c;
+    --border: #2e2e3a;
+    --accent: #f0c040;
+    --accent2: #e07b30;
+    --text: #f0ede8;
+    --muted: #7a7a8c;
+    --success: #3ecf8e;
+    --danger: #e05252;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* NOISE TEXTURE */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+
+  /* SCREENS */
+  .screen {
+    display: none;
+    min-height: 100vh;
+    padding: 0 0 40px;
+    animation: fadeIn 0.35s ease;
+  }
+  .screen.active { display: flex; flex-direction: column; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* HEADER */
+  .app-header {
+    padding: 28px 24px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: rgba(15,15,19,0.92);
+    backdrop-filter: blur(12px);
+    z-index: 10;
+  }
+
+  .app-header .logo {
+    width: 38px;
+    height: 38px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .app-header .logo svg { width: 22px; height: 22px; }
+
+  .app-header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+
+  .app-header .subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+
+  .back-btn {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+  .back-btn:hover { background: var(--surface); border-color: var(--accent); color: var(--accent); }
+  .back-btn svg { width: 14px; height: 14px; }
+
+  /* CONTENT AREA */
+  .content {
+    padding: 28px 24px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* SECTION LABEL */
+  .section-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* INPUTS */
+  .field-group { display: flex; flex-direction: column; gap: 8px; }
+
+  select, input {
+    width: 100%;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    padding: 14px 16px;
+    outline: none;
+    transition: border-color 0.18s;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  .select-wrapper {
+    position: relative;
+  }
+  .select-wrapper::after {
+    content: '';
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--muted);
+    pointer-events: none;
+  }
+  select option { background: var(--surface2); }
+
+  /* HERO TITLE */
+  .hero-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+  .hero-title span { color: var(--accent); }
+
+  .hero-subtitle {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* PRIMARY BUTTON */
+  .btn-primary {
+    width: 100%;
+    background: var(--accent);
+    color: #0f0f13;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.18s;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-primary:hover { background: #f7d060; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(240,192,64,0.25); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { background: var(--surface2); color: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* SECONDARY BUTTON */
+  .btn-secondary {
+    width: 100%;
+    background: transparent;
+    color: var(--text);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.18s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: rgba(240,192,64,0.06); }
+
+  /* SECTOR CARDS */
+  .sector-grid { display: flex; flex-direction: column; gap: 12px; }
+
+  .sector-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .sector-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    transform: scaleY(0);
+    transition: transform 0.2s;
+    border-radius: 0 2px 2px 0;
+  }
+  .sector-card:hover { border-color: var(--accent); background: var(--surface2); transform: translateX(3px); }
+  .sector-card:hover::before { transform: scaleY(1); }
+
+  .sector-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 22px;
+  }
+  .sector-icon.yellow { background: rgba(240,192,64,0.15); }
+  .sector-icon.orange { background: rgba(224,123,48,0.15); }
+  .sector-icon.blue { background: rgba(80,160,220,0.15); }
+
+  .sector-info { flex: 1; }
+  .sector-info h3 { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; }
+  .sector-info p { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .sector-arrow { color: var(--muted); }
+
+  /* CONTEXT BADGE */
+  .context-badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .badge-item { display: flex; flex-direction: column; gap: 2px; }
+  .badge-item .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .badge-item .value { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--accent); }
+  .badge-sep { width: 1px; height: 32px; background: var(--border); }
+
+  /* SCAN AREA */
+  .scan-zone {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 32px 20px;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .scan-zone:hover { border-color: var(--accent); background: rgba(240,192,64,0.04); }
+  .scan-zone .scan-icon { font-size: 40px; margin-bottom: 10px; }
+  .scan-zone h3 { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; }
+  .scan-zone p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* PHOTO GRID */
+  .photos-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .photo-thumb {
+    aspect-ratio: 3/4;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    position: relative;
+    background: var(--surface2);
+  }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-thumb .del-btn {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 22px; height: 22px;
+    background: rgba(224,82,82,0.9);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .photo-thumb:hover .del-btn { opacity: 1; }
+  .photo-thumb .page-num {
+    position: absolute;
+    bottom: 4px; left: 4px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+  }
+
+  /* SECTION BLOCK (Tesouraria) */
+  .doc-section {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .doc-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .doc-section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .required-dot {
+    width: 7px; height: 7px;
+    background: var(--accent);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .optional-tag {
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 400;
+  }
+  .count-badge {
+    background: rgba(240,192,64,0.15);
+    color: var(--accent);
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  /* MINI PHOTO GRID */
+  .mini-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mini-thumb {
+    width: 64px;
+    height: 80px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    position: relative;
+    background: var(--surface2);
+    flex-shrink: 0;
+  }
+  .mini-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .mini-thumb .del-btn {
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 18px; height: 18px;
+    background: rgba(224,82,82,0.9);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .mini-thumb:hover .del-btn { opacity: 1; }
+
+  .add-photo-mini {
+    width: 64px;
+    height: 80px;
+    border-radius: 6px;
+    border: 2px dashed var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .add-photo-mini:hover { border-color: var(--accent); color: var(--accent); background: rgba(240,192,64,0.05); }
+
+  /* PROGRESS / STATUS */
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  /* TOAST */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 20px;
+    font-size: 14px;
+    color: var(--text);
+    z-index: 9999;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.error { border-color: var(--danger); }
+  .toast.success { border-color: var(--success); }
+
+  /* OVERLAY LOADER */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,15,19,0.88);
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .overlay.active { display: flex; }
+  .spinner {
+    width: 48px; height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .overlay-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .overlay-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: -12px;
+  }
+
+  /* SUCCESS SCREEN */
+  .success-card {
+    background: var(--surface);
+    border: 1.5px solid var(--success);
+    border-radius: var(--radius);
+    padding: 32px 24px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .success-icon { font-size: 48px; }
+  .success-card h2 { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .success-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+  .file-name {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--accent);
+    word-break: break-all;
+    width: 100%;
+    text-align: left;
+  }
+
+  /* HIDDEN INPUT */
+  .hidden-input { display: none; }
+
+  /* DIVIDER */
+  .divider { height: 1px; background: var(--border); }
+
+  /* DRIVE CONFIG */
+  .drive-config {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .drive-config h3 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .drive-config p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .drive-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--surface2);
+  }
+  .drive-status .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-ok { background: var(--success); }
+  .dot-warn { background: var(--accent); }
+  .dot-err { background: var(--danger); }
+
+  /* MOBILE OPTIMIZATION */
+  @media (max-width: 420px) {
+    .content { padding: 20px 16px; }
+    .app-header { padding: 20px 16px 16px; }
+    .hero-title { font-size: 24px; }
+    .photos-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  /* CAMERA OVERLAY */
+  .camera-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 2000;
+    flex-direction: column;
+  }
+  .camera-overlay.active { display: flex; }
+  #cameraVideo {
+    flex: 1;
+    width: 100%;
+    object-fit: cover;
+  }
+  .camera-controls {
+    padding: 20px;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .capture-btn {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    border: 4px solid white;
+    background: white;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .capture-btn:active { transform: scale(0.9); background: var(--accent); border-color: var(--accent); }
+  .cam-btn {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .cam-btn:hover { background: rgba(255,255,255,0.25); }
+  #cameraCanvas { display: none; }
+  .cam-count {
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    min-width: 44px;
+  }
+
+  /* SCAN GUIDE OVERLAY */
+  .scan-guide {
+    position: absolute;
+    inset: 10%;
+    border: 2px solid rgba(240,192,64,0.6);
+    border-radius: 8px;
+    pointer-events: none;
+  }
+  .scan-guide::before, .scan-guide::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: var(--accent);
+    border-style: solid;
+  }
+  .scan-guide::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; }
+  .scan-guide::after { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 500;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-sheet {
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    padding: 32px 24px 40px;
+    width: 100%;
+    max-width: 520px;
+    animation: slideUp 0.3s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 24px; }
+  .modal-sheet h2 { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+  .modal-sheet p { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 24px; }
+  .modal-actions { display: flex; flex-direction: column; gap: 10px; }
+</style>
+</head>
+<body>
+
+<!-- ==================== SCREEN 1: HOME ==================== -->
+<div class="screen active" id="screen-home">
+  <div class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0f0f13" stroke-width="2.5" stroke-linecap="round">
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <path d="M3 9h18M9 21V9"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Scanner Docs</h1>
+      <div class="subtitle">Sistema de digitalização</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div>
+      <div class="hero-title">Novo <span>Envio</span></div>
+      <div class="hero-subtitle">Selecione o mês e local para iniciar a digitalização dos documentos.</div>
+    </div>
+
+    <div class="field-group">
+      <div class="section-label">Mês de referência</div>
+      <div class="select-wrapper">
+        <select id="selectMes">
+          <option value="">— Selecione o mês —</option>
+          <option>Janeiro</option><option>Fevereiro</option><option>Março</option>
+          <option>Abril</option><option>Maio</option><option>Junho</option>
+          <option>Julho</option><option>Agosto</option><option>Setembro</option>
+          <option>Outubro</option><option>Novembro</option><option>Dezembro</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="section-label">Local</div>
+      <div class="select-wrapper">
+        <select id="selectLocal">
+          <option value="">— Selecione o local —</option>
+          <option>Sede Central</option>
+          <option>Filial Norte</option>
+          <option>Filial Sul</option>
+          <option>Filial Leste</option>
+          <option>Filial Oeste</option>
+          <option>Unidade Modelo</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="goToSetores()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      Continuar
+    </button>
+
+    <div class="drive-config" id="driveConfigBlock">
+      <h3>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        Google Drive
+      </h3>
+      <div class="drive-status" id="driveStatus">
+        <div class="dot dot-warn"></div>
+        <span id="driveStatusText">Configure a pasta de destino abaixo</span>
+      </div>
+      <div class="field-group">
+        <input type="text" id="driveFolderId" placeholder="ID da pasta do Google Drive (opcional)" />
+      </div>
+      <div class="field-group">
+        <input type="text" id="driveApiKey" placeholder="API Key do Google Drive (opcional)" />
+      </div>
+      <p>💡 Sem configuração, o PDF será baixado localmente. Com API Key + Pasta ID, o upload é automático.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SCREEN 2: SETORES ==================== -->
+<div class="screen" id="screen-setores">
+  <div class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0f0f13" stroke-width="2.5" stroke-linecap="round">
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <path d="M3 9h18M9 21V9"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Setores</h1>
+      <div class="subtitle" id="headerCtx">—</div>
+    </div>
+    <button class="back-btn" onclick="goHome()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Voltar
+    </button>
+  </div>
+
+  <div class="content">
+    <div class="context-badge">
+      <div class="badge-item">
+        <span class="label">Local</span>
+        <span class="value" id="badgeLocal">—</span>
+      </div>
+      <div class="badge-sep"></div>
+      <div class="badge-item">
+        <span class="label">Mês</span>
+        <span class="value" id="badgeMes">—</span>
+      </div>
+    </div>
+
+    <div class="section-label">Escolha o setor</div>
+    <div class="sector-grid">
+      <div class="sector-card" onclick="goToSector('voluntaria')">
+        <div class="sector-icon yellow">📋</div>
+        <div class="sector-info">
+          <h3>Atividade Voluntária</h3>
+          <p>Scanner · Folha amarela</p>
+        </div>
+        <div class="sector-arrow">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>
+      <div class="sector-card" onclick="goToSector('tesouraria')">
+        <div class="sector-icon orange">💰</div>
+        <div class="sector-info">
+          <h3>Tesouraria</h3>
+          <p>Scanner · Coleta, Comprovantes e Despesas</p>
+        </div>
+        <div class="sector-arrow">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>
+      <div class="sector-card" onclick="goToSector('manutencao')">
+        <div class="sector-icon blue">🔧</div>
+        <div class="sector-info">
+          <h3>Manutenção Preventiva</h3>
+          <p>Fotos · Registro de ocorrências</p>
+        </div>
+        <div class="sector-arrow">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SCREEN: VOLUNTARIA ==================== -->
+<div class="screen" id="screen-voluntaria">
+  <div class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0f0f13" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+    </div>
+    <div>
+      <h1>Atividade Voluntária</h1>
+      <div class="subtitle">Scanner de documentos</div>
+    </div>
+    <button class="back-btn" onclick="goToSetores()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Voltar
+    </button>
+  </div>
+
+  <div class="content">
+    <div class="context-badge">
+      <div class="badge-item"><span class="label">Local</span><span class="value" id="vBadgeLocal">—</span></div>
+      <div class="badge-sep"></div>
+      <div class="badge-item"><span class="label">Mês</span><span class="value" id="vBadgeMes">—</span></div>
+    </div>
+
+    <div>
+      <div class="section-label">Folha Amarela — Páginas escaneadas</div>
+      <div id="vPhotosGrid" class="photos-grid"></div>
+      <div id="vEmptyState" style="text-align:center; padding:32px 0; color:var(--muted); font-size:13px;">
+        📄 Nenhuma página escaneada ainda
+      </div>
+    </div>
+
+    <div class="scan-zone" onclick="openCamera('voluntaria')">
+      <div class="scan-icon">📷</div>
+      <h3>Escanear página</h3>
+      <p>Toque para capturar com a câmera</p>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button class="btn-secondary" onclick="openCamera('voluntaria')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tirar foto / Escanear
+      </button>
+      <button class="btn-primary" id="vConcluirBtn" onclick="concluirEnvio('voluntaria')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Concluir Envio
+      </button>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" id="vProgress" style="width:0%"></div></div>
+    <div style="font-size:12px; color:var(--muted); text-align:center;" id="vCount">0 páginas capturadas</div>
+  </div>
+</div>
+
+<!-- ==================== SCREEN: TESOURARIA ==================== -->
+<div class="screen" id="screen-tesouraria">
+  <div class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0f0f13" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+    </div>
+    <div>
+      <h1>Tesouraria</h1>
+      <div class="subtitle">Scanner financeiro</div>
+    </div>
+    <button class="back-btn" onclick="goToSetores()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Voltar
+    </button>
+  </div>
+
+  <div class="content">
+    <div class="context-badge">
+      <div class="badge-item"><span class="label">Local</span><span class="value" id="tBadgeLocal">—</span></div>
+      <div class="badge-sep"></div>
+      <div class="badge-item"><span class="label">Mês</span><span class="value" id="tBadgeMes">—</span></div>
+    </div>
+
+    <!-- Seção 1: Folha de Coleta (OBRIGATÓRIA) -->
+    <div class="doc-section">
+      <div class="doc-section-header">
+        <div class="doc-section-title">
+          <span class="required-dot"></span>
+          Folha de Coleta
+        </div>
+        <span class="count-badge" id="tColetaCount">0</span>
+      </div>
+      <p style="font-size:12px; color:var(--muted);">⚠️ Obrigatório — mínimo 1 foto</p>
+      <div class="mini-grid" id="tColetaGrid"></div>
+      <button class="btn-secondary" style="width:auto; padding:10px 16px; font-size:13px;" onclick="openCamera('tesouraria-coleta')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        + Escanear folha
+      </button>
+    </div>
+
+    <!-- Seção 2: Comprovantes -->
+    <div class="doc-section">
+      <div class="doc-section-header">
+        <div class="doc-section-title">
+          Comprovantes
+          <span class="optional-tag">opcional</span>
+        </div>
+        <span class="count-badge" id="tCompCount">0</span>
+      </div>
+      <div class="mini-grid" id="tCompGrid"></div>
+      <button class="btn-secondary" style="width:auto; padding:10px 16px; font-size:13px;" onclick="openCamera('tesouraria-comprovante')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        + Escanear comprovante
+      </button>
+    </div>
+
+    <!-- Seção 3: Despesas -->
+    <div class="doc-section">
+      <div class="doc-section-header">
+        <div class="doc-section-title">
+          Despesas
+          <span class="optional-tag">opcional</span>
+        </div>
+        <span class="count-badge" id="tDespCount">0</span>
+      </div>
+      <div class="mini-grid" id="tDespGrid"></div>
+      <button class="btn-secondary" style="width:auto; padding:10px 16px; font-size:13px;" onclick="openCamera('tesouraria-despesa')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        + Escanear despesa
+      </button>
+    </div>
+
+    <button class="btn-primary" id="tConcluirBtn" onclick="concluirEnvio('tesouraria')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Concluir Envio
+    </button>
+  </div>
+</div>
+
+<!-- ==================== SCREEN: MANUTENCAO ==================== -->
+<div class="screen" id="screen-manutencao">
+  <div class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0f0f13" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+    </div>
+    <div>
+      <h1>Manutenção Preventiva</h1>
+      <div class="subtitle">Registro fotográfico</div>
+    </div>
+    <button class="back-btn" onclick="goToSetores()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Voltar
+    </button>
+  </div>
+
+  <div class="content">
+    <div class="context-badge">
+      <div class="badge-item"><span class="label">Local</span><span class="value" id="mBadgeLocal">—</span></div>
+      <div class="badge-sep"></div>
+      <div class="badge-item"><span class="label">Mês</span><span class="value" id="mBadgeMes">—</span></div>
+    </div>
+
+    <div>
+      <div class="section-label">Fotos de registro — <span id="mCountLabel">0 fotos</span></div>
+      <div id="mPhotosGrid" class="photos-grid"></div>
+      <div id="mEmptyState" style="text-align:center; padding:32px 0; color:var(--muted); font-size:13px;">
+        📸 Nenhuma foto registrada ainda
+      </div>
+    </div>
+
+    <div class="scan-zone" onclick="openCamera('manutencao')">
+      <div class="scan-icon">📸</div>
+      <h3>Fotografar</h3>
+      <p>Registre itens da manutenção preventiva</p>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button class="btn-secondary" onclick="openCamera('manutencao')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tirar foto
+      </button>
+      <button class="btn-primary" id="mConcluirBtn" onclick="concluirEnvio('manutencao')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Concluir Envio
+      </button>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" id="mProgress" style="width:0%"></div></div>
+    <div style="font-size:12px; color:var(--muted); text-align:center;" id="mCount">0 fotos capturadas</div>
+  </div>
+</div>
+
+<!-- ==================== SCREEN: SUCCESS ==================== -->
+<div class="screen" id="screen-success">
+  <div class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0f0f13" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+    </div>
+    <div>
+      <h1>Envio Concluído</h1>
+      <div class="subtitle">Documento gerado com sucesso</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="success-card">
+      <div class="success-icon">✅</div>
+      <h2>PDF Gerado!</h2>
+      <p id="successMsg">Seu documento foi gerado e está sendo processado.</p>
+      <div class="file-name" id="successFileName">—</div>
+      <div id="driveLink" style="display:none; width:100%;">
+        <a id="driveLinkAnchor" href="#" target="_blank" class="btn-secondary" style="text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+          Abrir no Google Drive
+        </a>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="goToSetores()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+      Voltar para Setores
+    </button>
+    <button class="btn-secondary" onclick="goHome()">Nova sessão</button>
+  </div>
+</div>
+
+<!-- ==================== CAMERA OVERLAY ==================== -->
+<div class="camera-overlay" id="cameraOverlay">
+  <div style="position:relative; flex:1; overflow:hidden; width:100%;">
+    <video id="cameraVideo" autoplay playsinline muted></video>
+    <div class="scan-guide" id="scanGuide"></div>
+    <canvas id="cameraCanvas"></canvas>
+    <div style="position:absolute; top:16px; left:0; right:0; text-align:center;">
+      <div style="background:rgba(0,0,0,0.5); display:inline-block; padding:6px 14px; border-radius:20px; color:white; font-size:12px; font-family:'DM Sans',sans-serif;" id="camInstructions">
+        Posicione o documento dentro da moldura
+      </div>
+    </div>
+  </div>
+  <div class="camera-controls">
+    <button class="cam-btn" onclick="closeCamera()" title="Fechar">✕</button>
+    <button class="capture-btn" onclick="capturePhoto()" id="captureBtn"></button>
+    <div class="cam-count" id="camCount">0 fotos</div>
+  </div>
+</div>
+
+<!-- ==================== LOADING OVERLAY ==================== -->
+<div class="overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="overlay-text" id="loadingTitle">Processando…</div>
+  <div class="overlay-sub" id="loadingSub">Aguarde um momento</div>
+</div>
+
+<!-- ==================== TOAST ==================== -->
+<div class="toast" id="toast"></div>
+
+<!-- ==================== MODAL CONFIRM ==================== -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <h2 id="modalTitle">Confirmar envio</h2>
+    <p id="modalBody">Deseja concluir o envio?</p>
+    <div class="modal-actions">
+      <button class="btn-primary" id="modalConfirmBtn">Confirmar</button>
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+const state = {
+  mes: '',
+  local: '',
+  ano: new Date().getFullYear(),
+  voluntaria: [],
+  tesouraria: { coleta: [], comprovante: [], despesa: [] },
+  manutencao: []
+};
+
+let currentCamera = null;
+let cameraStream = null;
+let currentSector = null;
+let currentSubsector = null;
+let modalCallback = null;
+
+// ============================================================
+//  NAVIGATION
+// ============================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function goHome() { showScreen('home'); }
+
+function goToSetores() {
+  document.getElementById('badgeLocal').textContent = state.local;
+  document.getElementById('badgeMes').textContent = state.mes;
+  document.getElementById('headerCtx').textContent = `${state.local} · ${state.mes}`;
+  showScreen('setores');
+}
+
+function goToSector(sector) {
+  currentSector = sector;
+  if (sector === 'voluntaria') {
+    document.getElementById('vBadgeLocal').textContent = state.local;
+    document.getElementById('vBadgeMes').textContent = state.mes;
+    renderVoluntariaGrid();
+    showScreen('voluntaria');
+  } else if (sector === 'tesouraria') {
+    document.getElementById('tBadgeLocal').textContent = state.local;
+    document.getElementById('tBadgeMes').textContent = state.mes;
+    renderTesourariaGrids();
+    showScreen('tesouraria');
+  } else if (sector === 'manutencao') {
+    document.getElementById('mBadgeLocal').textContent = state.local;
+    document.getElementById('mBadgeMes').textContent = state.mes;
+    renderManutencaoGrid();
+    showScreen('manutencao');
+  }
+}
+
+// ============================================================
+//  HOME LOGIC
+// ============================================================
+function goToSetores_fromHome() {
+  state.mes = document.getElementById('selectMes').value;
+  state.local = document.getElementById('selectLocal').value;
+  if (!state.mes || !state.local) {
+    showToast('⚠️ Selecione o mês e o local', 'error');
+    return;
+  }
+  goToSetores();
+}
+
+// Override button
+document.querySelector('#screen-home .btn-primary').onclick = goToSetores_fromHome;
+
+// ============================================================
+//  CAMERA
+// ============================================================
+async function openCamera(context) {
+  currentCamera = context;
+
+  // parse subsector for tesouraria
+  if (context.startsWith('tesouraria-')) {
+    currentSector = 'tesouraria';
+    currentSubsector = context.replace('tesouraria-', '');
+  } else {
+    currentSubsector = null;
+  }
+
+  const isScan = (context === 'voluntaria' || context.startsWith('tesouraria'));
+  document.getElementById('scanGuide').style.display = isScan ? 'block' : 'none';
+  document.getElementById('camInstructions').textContent = isScan
+    ? 'Posicione o documento dentro da moldura'
+    : 'Enquadre o item de manutenção';
+
+  updateCamCount();
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    });
+    document.getElementById('cameraVideo').srcObject = cameraStream;
+    document.getElementById('cameraOverlay').classList.add('active');
+  } catch (e) {
+    // Fallback: file input
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.multiple = true;
+    input.onchange = (ev) => {
+      const files = Array.from(ev.target.files);
+      files.forEach(f => processFile(f, context));
+    };
+    input.click();
+  }
+}
+
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById('cameraOverlay').classList.remove('active');
+}
+
+function capturePhoto() {
+  const video = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('cameraCanvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+
+  const isScan = (currentCamera === 'voluntaria' || (currentCamera && currentCamera.startsWith('tesouraria')));
+
+  if (isScan) {
+    // Apply slight contrast enhancement for scans
+    ctx.filter = 'contrast(1.15) brightness(1.05)';
+  }
+  ctx.drawImage(video, 0, 0);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+  addPhoto(dataUrl, currentCamera);
+  updateCamCount();
+
+  // Flash effect
+  const overlay = document.getElementById('cameraOverlay');
+  const flash = document.createElement('div');
+  flash.style.cssText = 'position:absolute;inset:0;background:white;opacity:0.7;pointer-events:none;z-index:10;transition:opacity 0.3s;';
+  overlay.appendChild(flash);
+  setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 300); }, 50);
+
+  showToast('📸 Capturado!', 'success');
+}
+
+function updateCamCount() {
+  let count = 0;
+  if (!currentCamera) return;
+  if (currentCamera === 'voluntaria') count = state.voluntaria.length;
+  else if (currentCamera === 'manutencao') count = state.manutencao.length;
+  else if (currentCamera === 'tesouraria-coleta') count = state.tesouraria.coleta.length;
+  else if (currentCamera === 'tesouraria-comprovante') count = state.tesouraria.comprovante.length;
+  else if (currentCamera === 'tesouraria-despesa') count = state.tesouraria.despesa.length;
+  document.getElementById('camCount').textContent = `${count} foto${count !== 1 ? 's' : ''}`;
+}
+
+function processFile(file, context) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    addPhoto(e.target.result, context);
+  };
+  reader.readAsDataURL(file);
+}
+
+function addPhoto(dataUrl, context) {
+  if (context === 'voluntaria') {
+    state.voluntaria.push(dataUrl);
+    renderVoluntariaGrid();
+  } else if (context === 'manutencao') {
+    state.manutencao.push(dataUrl);
+    renderManutencaoGrid();
+  } else if (context === 'tesouraria-coleta') {
+    state.tesouraria.coleta.push(dataUrl);
+    renderTesourariaGrids();
+  } else if (context === 'tesouraria-comprovante') {
+    state.tesouraria.comprovante.push(dataUrl);
+    renderTesourariaGrids();
+  } else if (context === 'tesouraria-despesa') {
+    state.tesouraria.despesa.push(dataUrl);
+    renderTesourariaGrids();
+  }
+  updateCamCount();
+}
+
+// ============================================================
+//  RENDER GRIDS
+// ============================================================
+function renderVoluntariaGrid() {
+  const grid = document.getElementById('vPhotosGrid');
+  const empty = document.getElementById('vEmptyState');
+  const count = state.voluntaria.length;
+
+  grid.innerHTML = '';
+  empty.style.display = count === 0 ? 'block' : 'none';
+
+  state.voluntaria.forEach((src, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${src}" /><span class="page-num">Pg ${i+1}</span><button class="del-btn" onclick="removePhoto('voluntaria',${i})">✕</button>`;
+    grid.appendChild(div);
+  });
+
+  document.getElementById('vCount').textContent = `${count} página${count !== 1 ? 's' : ''} capturada${count !== 1 ? 's' : ''}`;
+  document.getElementById('vProgress').style.width = Math.min(count * 10, 100) + '%';
+}
+
+function renderManutencaoGrid() {
+  const grid = document.getElementById('mPhotosGrid');
+  const empty = document.getElementById('mEmptyState');
+  const count = state.manutencao.length;
+
+  grid.innerHTML = '';
+  empty.style.display = count === 0 ? 'block' : 'none';
+
+  state.manutencao.forEach((src, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${src}" /><span class="page-num">${i+1}</span><button class="del-btn" onclick="removePhoto('manutencao',${i})">✕</button>`;
+    grid.appendChild(div);
+  });
+
+  document.getElementById('mCount').textContent = `${count} foto${count !== 1 ? 's' : ''} capturada${count !== 1 ? 's' : ''}`;
+  document.getElementById('mCountLabel').textContent = `${count} foto${count !== 1 ? 's' : ''}`;
+  document.getElementById('mProgress').style.width = Math.min(count * 10, 100) + '%';
+}
+
+function renderTesourariaGrids() {
+  renderMiniGrid('tColetaGrid', state.tesouraria.coleta, 'tesouraria-coleta');
+  renderMiniGrid('tCompGrid', state.tesouraria.comprovante, 'tesouraria-comprovante');
+  renderMiniGrid('tDespGrid', state.tesouraria.despesa, 'tesouraria-despesa');
+  document.getElementById('tColetaCount').textContent = state.tesouraria.coleta.length;
+  document.getElementById('tCompCount').textContent = state.tesouraria.comprovante.length;
+  document.getElementById('tDespCount').textContent = state.tesouraria.despesa.length;
+}
+
+function renderMiniGrid(containerId, photos, context) {
+  const grid = document.getElementById(containerId);
+  grid.innerHTML = '';
+  photos.forEach((src, i) => {
+    const div = document.createElement('div');
+    div.className = 'mini-thumb';
+    div.innerHTML = `<img src="${src}" /><button class="del-btn" onclick="removePhotoTes('${context}',${i})">✕</button>`;
+    grid.appendChild(div);
+  });
+}
+
+function removePhoto(sector, idx) {
+  if (sector === 'voluntaria') state.voluntaria.splice(idx, 1);
+  if (sector === 'manutencao') state.manutencao.splice(idx, 1);
+  renderVoluntariaGrid();
+  renderManutencaoGrid();
+}
+
+function removePhotoTes(context, idx) {
+  const sub = context.replace('tesouraria-', '');
+  state.tesouraria[sub].splice(idx, 1);
+  renderTesourariaGrids();
+}
+
+// ============================================================
+//  CONCLUIR ENVIO
+// ============================================================
+function concluirEnvio(sector) {
+  // Validation
+  if (sector === 'voluntaria' && state.voluntaria.length === 0) {
+    showToast('⚠️ Escaneie pelo menos 1 página', 'error');
+    return;
+  }
+  if (sector === 'tesouraria' && state.tesouraria.coleta.length === 0) {
+    showToast('⚠️ A Folha de Coleta é obrigatória', 'error');
+    return;
+  }
+  if (sector === 'manutencao' && state.manutencao.length === 0) {
+    showToast('⚠️ Tire pelo menos 1 foto', 'error');
+    return;
+  }
+
+  const sectorNames = { voluntaria: 'Atividade Voluntária', tesouraria: 'Tesouraria', manutencao: 'Manutenção Preventiva' };
+  const fileName = buildFileName(sector);
+
+  openModal(
+    `Concluir ${sectorNames[sector]}?`,
+    `O arquivo será salvo como:\n${fileName}.pdf`,
+    () => processAndUpload(sector, fileName)
+  );
+}
+
+function buildFileName(sector) {
+  const localClean = state.local.replace(/\s+/g, '-');
+  const sectorMap = { voluntaria: 'Voluntaria', tesouraria: 'Tesouraria', manutencao: 'Manutencao' };
+  const mesNum = String(['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].indexOf(state.mes) + 1).padStart(2,'0');
+  return `${localClean}_${sectorMap[sector]}_${state.mes}-${state.ano}`;
+}
+
+// ============================================================
+//  PDF GENERATION
+// ============================================================
+async function processAndUpload(sector, fileName) {
+  closeModal();
+  showLoading('Gerando PDF…', 'Unificando as imagens capturadas');
+
+  await sleep(200);
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    let images = [];
+    let sectionLabels = [];
+
+    if (sector === 'voluntaria') {
+      images = state.voluntaria.map(s => ({ src: s, label: null }));
+    } else if (sector === 'manutencao') {
+      images = state.manutencao.map(s => ({ src: s, label: null }));
+    } else if (sector === 'tesouraria') {
+      state.tesouraria.coleta.forEach((s, i) => images.push({ src: s, label: i === 0 ? 'Folha de Coleta' : null }));
+      state.tesouraria.comprovante.forEach((s, i) => images.push({ src: s, label: i === 0 && state.tesouraria.comprovante.length > 0 ? 'Comprovantes' : null }));
+      state.tesouraria.despesa.forEach((s, i) => images.push({ src: s, label: i === 0 && state.tesouraria.despesa.length > 0 ? 'Despesas' : null }));
+    }
+
+    const W = 210, H = 297;
+
+    for (let i = 0; i < images.length; i++) {
+      if (i > 0) pdf.addPage();
+      const { src, label } = images[i];
+
+      // Load image to get dimensions
+      const imgData = await loadImageData(src);
+      const ratio = imgData.width / imgData.height;
+      let imgW = W - 20, imgH = imgW / ratio;
+      if (imgH > H - 24) { imgH = H - 24; imgW = imgH * ratio; }
+      const x = (W - imgW) / 2;
+      const y = label ? 18 : 12;
+
+      if (label) {
+        pdf.setFontSize(10);
+        pdf.setTextColor(120, 120, 120);
+        pdf.text(label, 10, 12);
+      }
+
+      pdf.addImage(src, 'JPEG', x, y, imgW, Math.min(imgH, H - y - 8));
+
+      // Page number
+      pdf.setFontSize(8);
+      pdf.setTextColor(160, 160, 160);
+      pdf.text(`${i+1} / ${images.length}`, W - 14, H - 6, { align: 'right' });
+    }
+
+    // Add metadata cover
+    pdf.insertPage(1);
+    pdf.setFontSize(22);
+    pdf.setTextColor(30, 30, 30);
+    pdf.text(fileName.replace(/_/g, ' '), W/2, 80, { align: 'center' });
+    pdf.setFontSize(12);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text(`Local: ${state.local}`, W/2, 100, { align: 'center' });
+    pdf.text(`Mês: ${state.mes} / ${state.ano}`, W/2, 110, { align: 'center' });
+    pdf.text(`Total de páginas: ${images.length}`, W/2, 120, { align: 'center' });
+    pdf.setFontSize(9);
+    pdf.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, W/2, 135, { align: 'center' });
+
+    const pdfBlob = pdf.output('blob');
+
+    // Try Drive upload if configured
+    const folderId = document.getElementById('driveFolderId').value.trim();
+    const apiKey = document.getElementById('driveApiKey').value.trim();
+
+    let driveUrl = null;
+
+    if (folderId && apiKey) {
+      updateLoading('Enviando para o Drive…', 'Fazendo upload do arquivo');
+      try {
+        driveUrl = await uploadToDrive(pdfBlob, fileName + '.pdf', folderId, apiKey);
+      } catch (e) {
+        console.warn('Drive upload failed:', e);
+        showToast('⚠️ Upload ao Drive falhou. Baixando localmente.', 'error');
+      }
+    }
+
+    if (!driveUrl) {
+      // Download locally
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName + '.pdf';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+
+    hideLoading();
+    showSuccessScreen(fileName + '.pdf', driveUrl);
+
+    // Clear this sector's data
+    if (sector === 'voluntaria') state.voluntaria = [];
+    if (sector === 'manutencao') state.manutencao = [];
+    if (sector === 'tesouraria') state.tesouraria = { coleta: [], comprovante: [], despesa: [] };
+
+  } catch (err) {
+    hideLoading();
+    showToast('❌ Erro ao gerar PDF: ' + err.message, 'error');
+    console.error(err);
+  }
+}
+
+function loadImageData(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// ============================================================
+//  GOOGLE DRIVE UPLOAD (via upload API with API Key)
+// ============================================================
+async function uploadToDrive(blob, fileName, folderId, apiKey) {
+  const metadata = {
+    name: fileName,
+    mimeType: 'application/pdf',
+    parents: [folderId]
+  };
+
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', blob);
+
+  const res = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&key=${apiKey}`,
+    { method: 'POST', body: form }
+  );
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'Drive API error');
+  }
+
+  const data = await res.json();
+  return `https://drive.google.com/file/d/${data.id}/view`;
+}
+
+// ============================================================
+//  SUCCESS SCREEN
+// ============================================================
+function showSuccessScreen(fileName, driveUrl) {
+  document.getElementById('successFileName').textContent = fileName;
+
+  if (driveUrl) {
+    document.getElementById('successMsg').textContent = 'PDF enviado com sucesso para o Google Drive!';
+    document.getElementById('driveLink').style.display = 'block';
+    document.getElementById('driveLinkAnchor').href = driveUrl;
+  } else {
+    document.getElementById('successMsg').textContent = 'PDF baixado para o seu dispositivo com sucesso!';
+    document.getElementById('driveLink').style.display = 'none';
+  }
+
+  showScreen('success');
+}
+
+// ============================================================
+//  MODAL
+// ============================================================
+function openModal(title, body, callback) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').textContent = body;
+  modalCallback = callback;
+  document.getElementById('confirmModal').classList.add('active');
+}
+function closeModal() {
+  document.getElementById('confirmModal').classList.remove('active');
+  modalCallback = null;
+}
+document.getElementById('modalConfirmBtn').onclick = () => {
+  if (modalCallback) modalCallback();
+};
+document.getElementById('confirmModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ============================================================
+//  TOAST
+// ============================================================
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.remove('show'); }, 3000);
+}
+
+// ============================================================
+//  LOADING
+// ============================================================
+function showLoading(title, sub) {
+  document.getElementById('loadingTitle').textContent = title;
+  document.getElementById('loadingSub').textContent = sub;
+  document.getElementById('loadingOverlay').classList.add('active');
+}
+function updateLoading(title, sub) {
+  document.getElementById('loadingTitle').textContent = title;
+  document.getElementById('loadingSub').textContent = sub;
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.remove('active');
+}
+
+// ============================================================
+//  UTILS
+// ============================================================
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
