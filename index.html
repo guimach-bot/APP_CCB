@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <title>App Documentos</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <!-- SUPABASE CORRETO -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <!-- PDF -->
   <script src="https://unpkg.com/pdf-lib"></script>
 
   <style>
@@ -44,7 +47,7 @@
 <div id="camera" style="display:none;">
   <h3 id="instrucao"></h3>
 
-  <video id="video" autoplay></video><br>
+  <video id="video" autoplay playsinline></video><br>
 
   <button onclick="tirarFoto()">📸 Tirar Foto</button>
   <button onclick="abrirLens()">📄 Usar Scanner</button>
@@ -53,7 +56,9 @@
 </div>
 
 <script>
-const supabase = supabase.createClient(
+const { createClient } = supabase;
+
+const supabaseClient = createClient(
   "https://gbfazxfxwffutwbstays.supabase.co",
   "sb_publishable__mtPq7A6-98WTljEje0h7Q_N-lv-s0u"
 );
@@ -64,6 +69,9 @@ let fotos = [];
 let mesGlobal;
 let localGlobal;
 
+// =========================
+// INICIAR
+// =========================
 async function iniciar() {
   try {
     mesGlobal = document.getElementById("mes").value;
@@ -74,7 +82,7 @@ async function iniciar() {
       return;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from("registros")
       .insert([{ mes: mesGlobal, local: localGlobal }])
       .select();
@@ -96,6 +104,9 @@ async function iniciar() {
   }
 }
 
+// =========================
+// ABRIR SETOR
+// =========================
 function abrirSetor(setor) {
   setorAtual = setor;
   fotos = [];
@@ -117,67 +128,99 @@ function abrirSetor(setor) {
   }
 }
 
+// =========================
+// CAMERA
+// =========================
 async function iniciarCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  document.getElementById("video").srcObject = stream;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
+
+    document.getElementById("video").srcObject = stream;
+  } catch (err) {
+    alert("Erro ao acessar câmera!");
+    console.error(err);
+  }
 }
 
+// =========================
+// ABRIR LENS
+// =========================
 function abrirLens() {
   window.location.href = "ms-lens://";
 }
 
+// =========================
+// TIRAR FOTO
+// =========================
 function tirarFoto() {
   const video = document.getElementById("video");
-  const canvas = document.createElement("canvas");
 
+  if (!video.srcObject) {
+    alert("Câmera não iniciada!");
+    return;
+  }
+
+  const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
   canvas.getContext("2d").drawImage(video, 0, 0);
 
   canvas.toBlob(async (blob) => {
-    let nome = `${localGlobal}_${setorAtual}_${Date.now()}.png`;
+    try {
+      let nome = `${localGlobal}_${setorAtual}_${Date.now()}.png`;
 
-    await supabase.storage.from("documentos").upload(nome, blob);
+      const { error: uploadError } = await supabaseClient
+        .storage.from("documentos")
+        .upload(nome, blob);
 
-    let url = supabase.storage
-      .from("documentos")
-      .getPublicUrl(nome).data.publicUrl;
+      if (uploadError) {
+        console.error(uploadError);
+        alert("Erro ao subir imagem!");
+        return;
+      }
 
-    fotos.push(url);
+      let url = supabaseClient
+        .storage.from("documentos")
+        .getPublicUrl(nome).data.publicUrl;
 
-    await supabase.from("uploads").insert([{
-      registro_id: registroId,
-      setor: setorAtual,
-      arquivo_url: url
-    }]);
+      fotos.push(url);
 
-    alert("Foto enviada!");
+      await supabaseClient.from("uploads").insert([{
+        registro_id: registroId,
+        setor: setorAtual,
+        arquivo_url: url
+      }]);
+
+      alert("Foto enviada!");
+
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao processar foto!");
+    }
   });
 }
 
+// =========================
+// CONCLUIR
+// =========================
 async function concluir() {
-
   if (fotos.length === 0) {
     alert("Envie ao menos uma foto!");
     return;
   }
 
-  // REGRA TESOURARIA
-  if (setorAtual === "Tesouraria") {
-    if (fotos.length < 1) {
-      alert("Envie a foto da coleta!");
-      return;
-    }
-  }
-
   await gerarPDF();
 
   alert("Processo concluído!");
-
   voltar();
 }
 
+// =========================
+// GERAR PDF
+// =========================
 async function gerarPDF() {
   const pdfDoc = await PDFLib.PDFDocument.create();
 
@@ -206,12 +249,15 @@ async function gerarPDF() {
 
   const nomePDF = `${localGlobal}_${setorAtual}_${mesGlobal}_2026.pdf`;
 
-  await supabase.storage.from("documentos")
+  await supabaseClient.storage.from("documentos")
     .upload(nomePDF, pdfBytes, {
       contentType: "application/pdf"
     });
 }
 
+// =========================
+// VOLTAR
+// =========================
 function voltar() {
   document.getElementById("camera").style.display = "none";
   document.getElementById("setores").style.display = "block";
